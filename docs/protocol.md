@@ -168,6 +168,16 @@ ready ── engine.error(fatal) ──► error
 
 会话切换完成（`session.new` / `session.resume` 的应答）。渲染层重置时间线；**ACP resume 不回放历史**，历史上下文保留在引擎侧（持久化 JSONL），UI 以系统提示说明。字段：`sessionId: string`、`kind: 'new' \| 'resumed'`、`model?: string`。
 
+### 5.11 session.config
+
+会话配置状态（`session/new`、`session/resume`、`session/set_config_option` 的 configOptions 规范化）。在 `engine.ready`、`session.switched` 之后与每次配置修改成功后发送。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `options` | `SessionConfigOption[]` | 是 | 规范化配置项（当前仅 select 型） |
+
+`SessionConfigOption`：`id`（如 `model` / `reasoning_effort`）、`name`、`currentValue`（原样回传给 `session.config` 命令）、`currentLabel`（展示名）、`choices: {value, label, description?, group?}[]`（group 为分组名，如 provider `DeepSeek`）。model 的 value 是 JSON 路由串 `["provider","model"]`，展示名与 choices 内 label 一致（按 value 回查）。
+
 ## 6. 命令参考（外壳 → 内核）
 
 | 命令 | 字段 | 说明 |
@@ -178,8 +188,9 @@ ready ── engine.error(fatal) ──► error
 | `session.list` | `cursor?: string` | 列出当前工作区可恢复的历史会话；应答为 `session.list` 事件（5.9） |
 | `session.new` | — | 新建会话并切换为当前会话；旧会话自动关闭（数据已持久化，可再次恢复）；应答为 `session.switched` 事件（5.10） |
 | `session.resume` | `sessionId: string` | 恢复历史会话为当前会话；应答为 `session.switched` 事件（5.10） |
+| `session.config` | `configId: string`、`value: string` | 修改当前会话配置（`model` / `reasoning_effort`），对新轮次生效；应答为 `session.config` 事件（5.11）；非法值回非致命 `engine.error` |
 
-会话切换守卫：当前轮 prompt 在途或审批未决时，引擎拒绝 `session.new` / `session.resume`（非致命 `engine.error`）；`session.list` 不受限。
+会话切换守卫：当前轮 prompt 在途或审批未决时，引擎拒绝 `session.new` / `session.resume`（非致命 `engine.error`）；`session.list` 与 `session.config` 不受限（dsh 侧串行队列保证配置原子生效）。
 
 ## 7. 典型时序
 
@@ -276,6 +287,7 @@ Bundle 机制（对齐 dsh 装载语义，实证见 12.5）：dsh 每次启动�
 | --- | --- | --- |
 | `user.input` | `session/prompt` 请求 | `prompt: [{type:'text', text}]`；sessionId 未就绪时非致命 `engine.error` |
 | `session.list` | `session/list` 请求 | `{cwd, cursor?}`；应答宽容解析为 `session.list` 事件（dsh 仅回传 sessionId/cwd，活跃会话被过滤） |
+| `session.config` | `session/set_config_option` 请求 | `{sessionId, configId, value}`；应答 `{configOptions}` 规范化为 `session.config` 事件（选择项/分组/展示名均按宽容解析；model 的 value 为 JSON 路由串按 value 回查 choices 取展示名） |
 | `session.new` | `session/new` 请求（复用握手方法） | 成功后先注册新会话，再 `session/close` 旧会话、广播 `session.switched(new)`；prompt 在途/审批未决时拒绝 |
 | `session.resume` | `session/resume` 请求 | `{sessionId, cwd, mcpServers: []}`；cwd 必须与目标会话持久化 cwd 物理同目录（dsh 校验）；目标会话在本连接内已激活时直接切回（不重复 resume，dsh 会拒绝重复激活）；成功后关闭旧会话并广播 `session.switched(resumed)` |
 | `permission.response` | `session/request_permission` 的响应 | 按选项 kind 回退链匹配：`allow_always`→`allow_always`→`allow_once`、`allow_once`→`allow_once`、`deny`→`reject_once`→`reject_always`（dsh-acp 实测仅提供 allow_once/reject_once 两选项）；无匹配选项以 JSON-RPC error 响应（agent 按 cancelled 处理） |
@@ -422,3 +434,18 @@ dsh-acp 源码（`@deepseek-ai/dsh-acp` lib/index.js）实证的会话管理语�
 | 多会话共存 | bridge 的 `sessions` Map 允许多会话同时激活；重复 resume 激活中的会话报 `session is already active` |
 | 外壳适配 | 引擎内维持「单活跃会话」语义：切换 = 新会话/恢复成功后 `session/close` 旧会话（失败仅 warn），旧会话随即重新出现在列表；本连接内已激活但被切走的会话（activeSessions 集合命中）直接切回，不重复 resume；prompt 在途（one-prompt slot）与审批未决时拒绝切换（非致命 `engine.error`） |
 | UI | StatusBar 会话菜单：新会话 / 历史会话面板（刷新、恢复、加载更多续页）；`session.switched` 后渲染层清空时间线并提示「引擎侧保留完整上下文」；dsh 不回传标题，列表以短 UUID 展示 |
+
+#### 12.5.4 会话配置切换（2026-09-16，源码实证 + 实测）
+
+dsh-acp 源码与真实引擎实测的配置语义：
+
+| 项 | 实证结果 |
+| --- | --- |
+| 方法 | `session/set_config_option`（参数 `{sessionId, configId, value}`）；未知 configId 报 `unknown session config option`，未知模型报 `unknown model option`（invalidParams） |
+| 配置项 | `model`（value = `JSON.stringify([provider, model])` 不透明路由串）与 `reasoning_effort`（value = 档位 id）；响应返回更新后的完整 `configOptions` |
+| 选项结构 | select 型；model 按 provider 分组（`{group, name, options}`），reasoning 扁平；选项带展示名/描述——**展示名与模型 id 大小写不同**（如 `DeepSeek-V4-Pro` vs `deepseek-v4-pro`），currentLabel 按 value 回查 choices 取展示名 |
+| 实测档位 | reasoning_effort = Off/Low/High/Max 四档（非 low/medium/high 三档）；model = DeepSeek-V41-Flash/V4-Flash/V4-Pro/V4-Flash-Vision-Exp（单 provider `DeepSeek` 分组） |
+| 生效时机 | dsh 侧 serialize 队列保证原子生效，「对后续轮次生效」（prompt 在途也可改，下一轮走新配置） |
+| 外壳适配 | `session.config` 命令 → set_config_option，响应规范化为 `session.config` 事件；握手（session/new）、session.new、session.resume 三处也广播 config 状态；渲染层 kernel-events 同时同步 engine.model 徽标 |
+| UI | StatusBar ModelMenu：当前模型名按钮 + 面板（model 分组选项 + reasoning_effort 档位，当前项高亮）；修改后 dsh 回新状态刷新 |
+| 验证 | CDP 实测：初始 config 送达（4 模型 + 4 档位，分组正确）、切模型（currentLabel/徽标/按钮三处同步为 DeepSeek-V4-Pro）、切 reasoning（Low）、非法值错误路径（引擎报 unknown model option）、切换后真实 prompt 一轮 turn.end done（新配置下引擎正常）；mock 同构全通（含越界值拒绝） |

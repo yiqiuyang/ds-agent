@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   EngineStatus,
   PermissionDecision,
+  SessionConfigOption,
   SessionListItem
 } from '../../shared/protocol'
 
@@ -65,6 +66,8 @@ interface ShellState {
   sessionId: string | null
   /** 历史会话列表；null = 尚未请求过 */
   sessionList: SessionListState | null
+  /** 当前会话配置项（model / reasoning_effort…；session.config 事件维护） */
+  configOptions: SessionConfigOption[]
 
   setView: (view: View) => void
   appendUserMessage: (text: string) => void
@@ -73,6 +76,8 @@ interface ShellState {
   loadSessions: (cursor?: string) => void
   newSession: () => void
   resumeSession: (sessionId: string) => void
+  /** 修改当前会话配置（模型 / reasoning effort） */
+  setSessionConfig: (configId: string, value: string) => void
 }
 
 export const useShell = create<ShellState>((set) => ({
@@ -84,6 +89,7 @@ export const useShell = create<ShellState>((set) => ({
   view: 'chat',
   sessionId: null,
   sessionList: null,
+  configOptions: [],
 
   setView: (view) => set({ view }),
 
@@ -125,5 +131,9 @@ export const useShell = create<ShellState>((set) => ({
 
   resumeSession: (sessionId) => {
     void window.dsh.resumeSession(sessionId)
+  },
+
+  setSessionConfig: (configId, value) => {
+    void window.dsh.setSessionConfig(configId, value)
   }
 }))

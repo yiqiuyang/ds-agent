@@ -109,6 +109,32 @@ export interface SessionSwitchedEvent {
   model?: string
 }
 
+/** 会话配置项的一个可选值（ACP select option 规范化；group 用于分组展示，如 provider） */
+export interface SessionConfigChoice {
+  value: string
+  label: string
+  description?: string
+  group?: string
+}
+
+/** 会话配置项（ACP session config option 规范化；外壳目前只消费 select 型） */
+export interface SessionConfigOption {
+  /** 配置 id，如 'model' / 'reasoning_effort' */
+  id: string
+  name: string
+  /** 当前值（原样透传给 session.config 命令） */
+  currentValue: string
+  /** 当前值的展示名（model 的 value 是 JSON 路由串，展示名取模型名） */
+  currentLabel: string
+  choices: SessionConfigChoice[]
+}
+
+/** 会话配置状态（session/new、session/resume、session/set_config_option 的 configOptions 规范化） */
+export interface SessionConfigEvent {
+  type: 'session.config'
+  options: SessionConfigOption[]
+}
+
 /** 主进程 DshEngineManager 主动上报的生命周期状态变更 */
 export interface EngineStatusEvent {
   type: 'engine.status'
@@ -131,6 +157,7 @@ export type KernelEvent =
   | EngineExitedEvent
   | SessionListEvent
   | SessionSwitchedEvent
+  | SessionConfigEvent
 
 // ========== 外壳 -> 内核（命令） ==========
 
@@ -146,6 +173,8 @@ export type ShellCommand =
   | { type: 'session.new' }
   /** 恢复历史会话为当前会话（历史在引擎侧保留，不回放） */
   | { type: 'session.resume'; sessionId: string }
+  /** 修改当前会话的配置项（如 model / reasoning_effort；对新轮次生效） */
+  | { type: 'session.config'; configId: string; value: string }
 
 // ========== 状态与配置 ==========
 

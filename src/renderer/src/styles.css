@@ -211,6 +211,37 @@ body {
   margin: 0;
 }
 
+/* ---------- 模型/配置选择器 ---------- */
+.config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.config-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.config-choice:hover {
+  border-color: var(--text-dim);
+}
+.config-choice.current {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.config-check {
+  font-size: 12px;
+}
+
 /* ---------- 聊天区 ---------- */
 .chat {
   flex: 1;

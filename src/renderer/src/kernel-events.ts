@@ -26,7 +26,9 @@ function applyKernelEvent(event: KernelEvent): void {
         sessionId: event.sessionId ?? null,
         timeline: [],
         streamingMessageId: null,
-        pendingPermission: null
+        pendingPermission: null,
+        // 会话配置随随后的 session.config 事件送达
+        configOptions: []
       })
       break
 
@@ -41,6 +43,18 @@ function applyKernelEvent(event: KernelEvent): void {
           loading: false
         }
       }))
+      break
+
+    case 'session.config':
+      useShell.setState((s) => {
+        const model = event.options.find((o) => o.id === 'model')
+        return {
+          configOptions: event.options,
+          // 模型切换后同步引擎信息展示（engine.model 在 StatusBar 显示）
+          engine:
+            s.engine && model ? { ...s.engine, model: model.currentLabel } : s.engine
+        }
+      })
       break
 
     case 'session.switched':
@@ -62,7 +76,9 @@ function applyKernelEvent(event: KernelEvent): void {
         ],
         streamingMessageId: null,
         pendingPermission: null,
-        sessionList: null
+        sessionList: null,
+        // 新会话配置随随后的 session.config 事件送达
+        configOptions: []
       }))
       break
 

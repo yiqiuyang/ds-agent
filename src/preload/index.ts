@@ -33,6 +33,9 @@ const api = {
   resumeSession(sessionId: string): Promise<void> {
     return ipcRenderer.invoke('engine:session-resume', sessionId)
   },
+  setSessionConfig(configId: string, value: string): Promise<void> {
+    return ipcRenderer.invoke('engine:set-config', configId, value)
+  },
   getConfig(): Promise<ShellConfig> {
     return ipcRenderer.invoke('config:get')
   },

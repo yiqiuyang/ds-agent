@@ -2,7 +2,13 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
-import type { KernelEvent, PermissionDecision, ShellCommand } from '../../shared/protocol'
+import type {
+  KernelEvent,
+  PermissionDecision,
+  SessionConfigChoice,
+  SessionConfigOption,
+  ShellCommand
+} from '../../shared/protocol'
 import type { EngineExitInfo, EngineProcess } from './engine-manager'
 
 /** dsh 捆绑来源（npm 包名，vendor 目录内解析） */
@@ -29,6 +35,7 @@ const ACP_METHOD = {
   sessionClose: 'session/close',
   sessionPrompt: 'session/prompt',
   sessionCancel: 'session/cancel',
+  sessionSetConfig: 'session/set_config_option',
   sessionUpdate: 'session/update',
   requestPermission: 'session/request_permission'
 } as const
@@ -183,20 +190,86 @@ function pickOptionId(options: AcpPermissionOption[], decision: PermissionDecisi
   return null
 }
 
-/** 从 session/new 的 configOptions 提取当前模型名（宽容解析，失败返回 null） */
-function extractCurrentModel(configOptions: unknown): string | null {
-  if (!Array.isArray(configOptions)) return null
-  const opt = configOptions.find(
-    (o) => o && typeof o === 'object' && (o as { id?: unknown }).id === 'model'
-  ) as { currentValue?: unknown } | undefined
-  try {
-    const parsed =
-      typeof opt?.currentValue === 'string' ? JSON.parse(opt.currentValue) : opt?.currentValue
-    if (Array.isArray(parsed) && typeof parsed[1] === 'string') return parsed[1]
-  } catch {
-    // currentValue 非法 JSON：忽略
+/** model 配置项的 value 是 JSON 路由串 ["provider","model"]，展示名取模型名；其余直接展示 */
+function configValueLabel(id: string, value: string): string {
+  if (id === 'model') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed) && typeof parsed[1] === 'string') return parsed[1]
+    } catch {
+      // 非法 JSON：按原值展示
+    }
   }
-  return null
+  return value
+}
+
+/**
+ * ACP configOptions -> 协议 SessionConfigOption[]（宽容解析）。
+ * dsh-acp 实测：select 型，options 可能是扁平数组或按 provider 分组的数组；
+ * boolean 型外壳暂不消费，跳过。
+ */
+function parseConfigOptions(configOptions: unknown): SessionConfigOption[] {
+  if (!Array.isArray(configOptions)) return []
+  const result: SessionConfigOption[] = []
+  for (const raw of configOptions) {
+    if (!raw || typeof raw !== 'object') continue
+    const opt = raw as {
+      id?: unknown
+      name?: unknown
+      type?: unknown
+      currentValue?: unknown
+      options?: unknown
+    }
+    if (typeof opt.id !== 'string' || opt.type !== 'select') continue
+    const currentValue = typeof opt.currentValue === 'string' ? opt.currentValue : ''
+    const choices: SessionConfigChoice[] = []
+    if (Array.isArray(opt.options)) {
+      for (const item of opt.options) {
+        if (!item || typeof item !== 'object') continue
+        // 分组形态：{group, name, options: [...]}
+        if ('options' in item && Array.isArray((item as { options?: unknown }).options)) {
+          const grp = item as { group?: unknown; name?: unknown; options?: unknown }
+          for (const sub of (grp.options as unknown[]) ?? []) {
+            const c = sub as { value?: unknown; name?: unknown; description?: unknown }
+            if (typeof c?.value === 'string' && typeof c.name === 'string') {
+              choices.push({
+                value: c.value,
+                label: c.name,
+                ...(typeof c.description === 'string' ? { description: c.description } : {}),
+                ...(typeof grp.name === 'string' ? { group: grp.name } : {})
+              })
+            }
+          }
+          continue
+        }
+        // 扁平形态：{value, name, description}
+        const c = item as { value?: unknown; name?: unknown; description?: unknown }
+        if (typeof c.value === 'string' && typeof c.name === 'string') {
+          choices.push({
+            value: c.value,
+            label: c.name,
+            ...(typeof c.description === 'string' ? { description: c.description } : {})
+          })
+        }
+      }
+    }
+    result.push({
+      id: opt.id,
+      name: typeof opt.name === 'string' ? opt.name : opt.id,
+      currentValue,
+      // 展示名优先取 choices 内同 value 项（模型 id 与展示名大小写不一致，如 deepseek-v4-pro vs DeepSeek-V4-Pro）
+      currentLabel:
+        choices.find((c) => c.value === currentValue)?.label ?? configValueLabel(opt.id, currentValue),
+      choices
+    })
+  }
+  return result
+}
+
+/** 从 configOptions 提取当前模型名（引擎展示用；失败返回 null） */
+function extractCurrentModel(configOptions: unknown): string | null {
+  const model = parseConfigOptions(configOptions).find((o) => o.id === 'model')
+  return model?.currentLabel ?? null
 }
 
 /** 以 ACP 客户端方式运行 dsh sidecar，NDJSON/stdio 上收发 JSON-RPC */
@@ -343,6 +416,7 @@ export class DshProcess implements EngineProcess {
           this.activeSessions.add(sessionId)
           this.closeCurrentSession()
           this.switchToSession(sessionId, 'new', model)
+          this.emitConfig((result as { configOptions?: unknown }).configOptions)
         })
         break
       case 'session.resume': {
@@ -371,6 +445,33 @@ export class DshProcess implements EngineProcess {
             this.activeSessions.add(target)
             this.closeCurrentSession()
             this.switchToSession(target, 'resumed', model)
+            this.emitConfig((result as { configOptions?: unknown }).configOptions)
+          }
+        )
+        break
+      }
+      case 'session.config': {
+        if (!this.sessionId) {
+          this.emit({
+            type: 'engine.error',
+            message: '引擎尚未完成 ACP 握手，无法修改配置',
+            fatal: false
+          })
+          return
+        }
+        this.sendRpc(
+          ACP_METHOD.sessionSetConfig,
+          { sessionId: this.sessionId, configId: cmd.configId, value: cmd.value },
+          (result, error) => {
+            if (error) {
+              this.emit({
+                type: 'engine.error',
+                message: `修改配置失败: ${error.message}`,
+                fatal: false
+              })
+              return
+            }
+            this.emitConfig((result as { configOptions?: unknown }).configOptions)
           }
         )
         break
@@ -518,6 +619,7 @@ export class DshProcess implements EngineProcess {
       sessionId,
       ...(model ? { model } : {})
     })
+    this.emitConfig((result as { configOptions?: unknown }).configOptions)
   }
 
   private onPromptResult(result: unknown, error: RpcError | null): void {
@@ -543,6 +645,12 @@ export class DshProcess implements EngineProcess {
   }
 
   // ---- 会话管理（list / new / resume / close） ----
+
+  /** 广播规范化后的会话配置状态（session.config 事件） */
+  private emitConfig(configOptions: unknown): void {
+    const options = parseConfigOptions(configOptions)
+    if (options.length > 0) this.emit({ type: 'session.config', options })
+  }
 
   /** session/list 结果 -> session.list 事件（宽容解析条目） */
   private onSessionListResult(result: unknown, error: RpcError | null, cursor?: string): void {

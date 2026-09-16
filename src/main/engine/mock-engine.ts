@@ -1,5 +1,6 @@
 import type { KernelEvent, PermissionDecision, ShellCommand } from '../../shared/protocol'
 import type { EngineExitInfo, EngineProcess } from './engine-manager'
+import type { SessionConfigOption } from '../../shared/protocol'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -8,6 +9,20 @@ interface PendingPermission {
   tool: string
   resolve: (decision: PermissionDecision) => void
 }
+
+/** mock 会话配置池：与 dsh-acp 的 model / reasoning_effort 两个配置项同构（reasoning 为实测四档） */
+const MOCK_MODEL_CHOICES = [
+  { value: '["deepseek-official","deepseek-v4-flash"]', label: 'DeepSeek-V4-Flash' },
+  { value: '["deepseek-official","deepseek-v4-pro"]', label: 'DeepSeek-V4-Pro' },
+  { value: '["deepseek-official","deepseek-v41-flash"]', label: 'DeepSeek-V41-Flash' },
+  { value: '["deepseek-official","deepseek-vision-exp"]', label: 'DeepSeek-V4-Flash-Vision-Exp' }
+]
+const MOCK_REASONING_CHOICES = [
+  { value: 'off', label: 'Off' },
+  { value: 'low', label: 'Low' },
+  { value: 'high', label: 'High' },
+  { value: 'max', label: 'Max' }
+]
 
 /**
  * 确定性 mock 引擎：本机无 dsh 时驱动完整 UI 流程
@@ -27,6 +42,11 @@ export class MockEngine implements EngineProcess {
   private readonly historyPool = ['mock-hist-1', 'mock-hist-2', 'mock-hist-3']
   private allowedTools = new Set<string>()
   private pending: PendingPermission | null = null
+  /** 当前 mock 配置状态（session.config 命令可改，事件回读） */
+  private configState: Record<string, string> = {
+    model: MOCK_MODEL_CHOICES[0].value,
+    reasoning_effort: MOCK_REASONING_CHOICES[2].value
+  }
 
   onEvent(cb: (event: KernelEvent) => void): void {
     this.listener = cb
@@ -53,9 +73,10 @@ export class MockEngine implements EngineProcess {
       engine: 'mock',
       agent: 'mock-engine',
       version: '0.1.0',
-      model: 'deepseek-v4-pro (mock)',
+      model: this.modelLabel(),
       sessionId: this.sessionId
     })
+    this.emitConfig()
   }
 
   send(cmd: ShellCommand): void {
@@ -91,8 +112,9 @@ export class MockEngine implements EngineProcess {
           type: 'session.switched',
           sessionId: this.sessionId,
           kind: 'new',
-          model: 'deepseek-v4-pro (mock)'
+          model: this.modelLabel()
         })
+        this.emitConfig()
         break
       case 'session.resume':
         if (!this.canSwitchSession()) return
@@ -102,10 +124,62 @@ export class MockEngine implements EngineProcess {
           type: 'session.switched',
           sessionId: this.sessionId,
           kind: 'resumed',
-          model: 'deepseek-v4-pro (mock)'
+          model: this.modelLabel()
         })
+        this.emitConfig()
         break
+      case 'session.config': {
+        const known =
+          cmd.configId === 'model' || cmd.configId === 'reasoning_effort' ? cmd.configId : null
+        if (!known) {
+          this.emit({
+            type: 'engine.error',
+            message: `未知配置项: ${cmd.configId}`,
+            fatal: false
+          })
+          return
+        }
+        const pool = known === 'model' ? MOCK_MODEL_CHOICES : MOCK_REASONING_CHOICES
+        if (!pool.some((c) => c.value === cmd.value)) {
+          this.emit({
+            type: 'engine.error',
+            message: `配置值不在可选范围: ${cmd.value}`,
+            fatal: false
+          })
+          return
+        }
+        this.configState[known] = cmd.value
+        this.emitConfig()
+        break
+      }
     }
+  }
+
+  /** 当前模型展示名（engine.ready / session.switched 携带） */
+  private modelLabel(): string {
+    const hit = MOCK_MODEL_CHOICES.find((c) => c.value === this.configState.model)
+    return `${hit?.label ?? 'deepseek-v4-pro'} (mock)`
+  }
+
+  /** 广播规范化后的会话配置状态（与 DshProcess.emitConfig 同构） */
+  private emitConfig(): void {
+    const options: SessionConfigOption[] = [
+      {
+        id: 'model',
+        name: 'Model',
+        currentValue: this.configState.model,
+        currentLabel: MOCK_MODEL_CHOICES.find((c) => c.value === this.configState.model)?.label ?? this.configState.model,
+        choices: MOCK_MODEL_CHOICES
+      },
+      {
+        id: 'reasoning_effort',
+        name: 'Reasoning effort',
+        currentValue: this.configState.reasoning_effort,
+        currentLabel: this.configState.reasoning_effort,
+        choices: MOCK_REASONING_CHOICES
+      }
+    ]
+    this.emit({ type: 'session.config', options })
   }
 
   /** 切换会话的前置守卫（与 DshProcess 语义一致） */

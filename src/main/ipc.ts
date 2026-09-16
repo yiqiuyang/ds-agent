@@ -54,6 +54,12 @@ export function registerIpc(manager: DshEngineManager): void {
     manager.send({ type: 'session.resume', sessionId })
   })
 
+  ipcMain.handle('engine:set-config', (_event, configId: unknown, value: unknown) => {
+    if (typeof configId !== 'string' || !configId) throw new Error('无效的配置 id')
+    if (typeof value !== 'string') throw new Error('无效的配置值')
+    manager.send({ type: 'session.config', configId, value })
+  })
+
   ipcMain.handle('config:get', () => loadConfig())
 
   ipcMain.handle('config:set', (_event, patch: unknown) => {
