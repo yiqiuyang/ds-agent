@@ -23,10 +23,47 @@ function applyKernelEvent(event: KernelEvent): void {
       useShell.setState({
         status: 'ready',
         engine: { mode: event.engine, agent: event.agent, model: event.model },
+        sessionId: event.sessionId ?? null,
         timeline: [],
         streamingMessageId: null,
         pendingPermission: null
       })
+      break
+
+    case 'session.list':
+      useShell.setState((s) => ({
+        sessionList: {
+          // 续页请求（带 cursor）追加到已加载条目之后；首页请求整体替换
+          sessions: event.cursor
+            ? [...(s.sessionList?.sessions ?? []), ...event.sessions]
+            : event.sessions,
+          nextCursor: event.nextCursor ?? null,
+          loading: false
+        }
+      }))
+      break
+
+    case 'session.switched':
+      // ACP resume 不回放历史：清空时间线，以系统提示说明上下文仍在引擎侧
+      useShell.setState((s) => ({
+        status: 'ready',
+        sessionId: event.sessionId,
+        ...(event.model ? { engine: s.engine ? { ...s.engine, model: event.model } : null } : {}),
+        timeline: [
+          {
+            kind: 'message',
+            id: `sys_${Date.now()}`,
+            role: 'assistant',
+            text:
+              event.kind === 'new'
+                ? '已开始新会话。'
+                : `已恢复会话 \`${event.sessionId.slice(0, 8)}…\`。引擎侧保留完整上下文，可直接继续对话。`
+          }
+        ],
+        streamingMessageId: null,
+        pendingPermission: null,
+        sessionList: null
+      }))
       break
 
     case 'engine.status':

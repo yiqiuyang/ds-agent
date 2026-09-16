@@ -154,6 +154,20 @@ ready ── engine.error(fatal) ──► error
 | `code` | `number \| null` | 是 | 退出码，被信号杀死时为 `null` |
 | `signal` | `string` | 否 | 终止信号（POSIX） |
 
+### 5.9 session.list
+
+`session.list` 命令的应答（异步事件，无请求关联 id）。dsh 仅回传 `sessionId` 与 `cwd`（不回传标题/时间），按创建时间倒序；当前活跃会话不会出现在列表中。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `sessions` | `{ sessionId: string; cwd: string }[]` | 是 | 本页条目 |
+| `cursor` | `string` | 否 | 本次请求使用的续页游标（渲染端据此判定追加还是替换） |
+| `nextCursor` | `string` | 否 | 有更多页时的续页游标 |
+
+### 5.10 session.switched
+
+会话切换完成（`session.new` / `session.resume` 的应答）。渲染层重置时间线；**ACP resume 不回放历史**，历史上下文保留在引擎侧（持久化 JSONL），UI 以系统提示说明。字段：`sessionId: string`、`kind: 'new' \| 'resumed'`、`model?: string`。
+
 ## 6. 命令参考（外壳 → 内核）
 
 | 命令 | 字段 | 说明 |
@@ -161,6 +175,11 @@ ready ── engine.error(fatal) ──► error
 | `user.input` | `text: string` | 用户输入，开启新一轮交互 |
 | `permission.response` | `requestId: string`、`decision: 'allow_once' \| 'allow_always' \| 'deny'` | 对 `permission.request` 的应答；`allow_always` 表示本会话内同名工具不再询问 |
 | `interrupt` | — | 中断当前轮，引擎应以 `turn.end(interrupted)` 收尾 |
+| `session.list` | `cursor?: string` | 列出当前工作区可恢复的历史会话；应答为 `session.list` 事件（5.9） |
+| `session.new` | — | 新建会话并切换为当前会话；旧会话自动关闭（数据已持久化，可再次恢复）；应答为 `session.switched` 事件（5.10） |
+| `session.resume` | `sessionId: string` | 恢复历史会话为当前会话；应答为 `session.switched` 事件（5.10） |
+
+会话切换守卫：当前轮 prompt 在途或审批未决时，引擎拒绝 `session.new` / `session.resume`（非致命 `engine.error`）；`session.list` 不受限。
 
 ## 7. 典型时序
 
@@ -256,6 +275,9 @@ Bundle 机制（对齐 dsh 装载语义，实证见 12.5）：dsh 每次启动�
 | 协议命令 | ACP 方法 | 说明 |
 | --- | --- | --- |
 | `user.input` | `session/prompt` 请求 | `prompt: [{type:'text', text}]`；sessionId 未就绪时非致命 `engine.error` |
+| `session.list` | `session/list` 请求 | `{cwd, cursor?}`；应答宽容解析为 `session.list` 事件（dsh 仅回传 sessionId/cwd，活跃会话被过滤） |
+| `session.new` | `session/new` 请求（复用握手方法） | 成功后先注册新会话，再 `session/close` 旧会话、广播 `session.switched(new)`；prompt 在途/审批未决时拒绝 |
+| `session.resume` | `session/resume` 请求 | `{sessionId, cwd, mcpServers: []}`；cwd 必须与目标会话持久化 cwd 物理同目录（dsh 校验）；目标会话在本连接内已激活时直接切回（不重复 resume，dsh 会拒绝重复激活）；成功后关闭旧会话并广播 `session.switched(resumed)` |
 | `permission.response` | `session/request_permission` 的响应 | 按选项 kind 回退链匹配：`allow_always`→`allow_always`→`allow_once`、`allow_once`→`allow_once`、`deny`→`reject_once`→`reject_always`（dsh-acp 实测仅提供 allow_once/reject_once 两选项）；无匹配选项以 JSON-RPC error 响应（agent 按 cancelled 处理） |
 | `interrupt` | `session/cancel` 通知 | — |
 
@@ -269,6 +291,10 @@ Bundle 机制（对齐 dsh 装载语义，实证见 12.5）：dsh 每次启动�
 | `session/update`（`tool_call_update`） | `tool.result` | 仅 `status: completed/failed`；输出取 content text 块拼接（含嵌套 `{type:'content'}` 形态，见 12.5.2），回退 `rawOutput` |
 | `session/request_permission`（请求） | `permission.request` | `requestId = perm_<rpcId>`；toolCall 仅含 toolCallId，经 `toolCalls` 注册表回查补全 tool/input；响应见 10.2 |
 | `session/prompt` 响应 | `turn.end` | stopReason 映射见下表；出错时先发错误消息流 + 非致命 `engine.error` + `turn.end('error')` |
+| `session/new` 响应（握手 + session.new 命令） | `engine.ready`（含 `sessionId`）/ `session.switched` | configOptions 中解析当前模型随事件携带 |
+| `session/list` 响应 | `session.list` | 透传 sessions + nextCursor，附请求 cursor |
+| `session/resume` 响应 | `session.switched`（kind=resumed） | `{configOptions}`，**不回放历史**；历史上下文保留在引擎侧持久化 JSONL |
+| `session/close` 响应 | —（仅 warn 失败） | 会话数据已持久化，关闭后重新出现在 session/list |
 | 其余 update（plan/usage/compaction 等） | 忽略（warn） | 未知 update 类型向前兼容 |
 
 `stopReason` 映射：`end_turn`→`done`；`cancelled`→`interrupted`；`max_tokens` / `max_turn_requests` / `refusal`→`error`；未知值按 `done`。
@@ -383,3 +409,16 @@ spawn(process.execPath, [entry, '--profile', profile], {
 | 审批往返（deny） | deny → `tool_call_update`（ok:false "the user rejected escalating…"）→ thought 反思 → 总结消息 → `turn.end(done)`；外壳 deny 经 `pickOptionId` 回退链映射到 `reject_once` |
 | 工具审批触发条件 | 只读工具（glob/grep）不触发审批；写/sandbox 升级类工具（pwsh `sandbox_permissions:"danger-full-access"`）触发审批 |
 | Electron CDP 全链路（渲染页 `window.dsh.*`） | 纯文本轮 / 工具轮（含超时失败）/ in-flight 错误路径（err 消息流 + 非致命 `engine.error` + `turn.end(error)`）/ 审批往返均验证通过；回归确认 `permission.request` 事件 `tool=pwsh`、input 含完整命令参数（校准前为 unknown/空） |
+
+#### 12.5.3 会话 resume/list 接入（2026-09-16，源码实证）
+
+dsh-acp 源码（`@deepseek-ai/dsh-acp` lib/index.js）实证的会话管理语义，接入实现据此设计：
+
+| 项 | 实证结果 |
+| --- | --- |
+| `session/list` | 参数 `{cwd?, cursor?}`；cwd 必须绝对路径，按物理同目录（realpath）过滤条目；**活跃会话（本连接已 new/resume）被过滤**；subagent 派生会话（origin=subagent / 有 parentSession）不可列出；倒序分页，`nextCursor` 为 base64url 键集游标；**条目仅 `{sessionId, cwd}`**（不回传标题/时间戳） |
+| `session/resume` | 参数 `{sessionId, cwd, mcpServers?}`；校验：目标未激活、持久化头存在、非 subagent/子会话、cwd 物理同目录（不符报 invalidParams）；**返回 `{configOptions}`，不回放历史**（README 明示 "resume 会重新连接 MCP 声明，但不会重放历史"） |
+| `session/close` | 关闭 = 释放 Agent 实例，**非删除**；数据在持久化 JSONL 中，关闭后重新可列/可恢复 |
+| 多会话共存 | bridge 的 `sessions` Map 允许多会话同时激活；重复 resume 激活中的会话报 `session is already active` |
+| 外壳适配 | 引擎内维持「单活跃会话」语义：切换 = 新会话/恢复成功后 `session/close` 旧会话（失败仅 warn），旧会话随即重新出现在列表；本连接内已激活但被切走的会话（activeSessions 集合命中）直接切回，不重复 resume；prompt 在途（one-prompt slot）与审批未决时拒绝切换（非致命 `engine.error`） |
+| UI | StatusBar 会话菜单：新会话 / 历史会话面板（刷新、恢复、加载更多续页）；`session.switched` 后渲染层清空时间线并提示「引擎侧保留完整上下文」；dsh 不回传标题，列表以短 UUID 展示 |

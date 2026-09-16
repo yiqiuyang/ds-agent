@@ -41,6 +41,19 @@ export function registerIpc(manager: DshEngineManager): void {
     manager.send({ type: 'interrupt' })
   })
 
+  ipcMain.handle('engine:session-list', (_event, cursor: unknown) => {
+    manager.send({ type: 'session.list', ...(typeof cursor === 'string' && cursor ? { cursor } : {}) })
+  })
+
+  ipcMain.handle('engine:session-new', () => {
+    manager.send({ type: 'session.new' })
+  })
+
+  ipcMain.handle('engine:session-resume', (_event, sessionId: unknown) => {
+    if (typeof sessionId !== 'string' || !sessionId) throw new Error('无效的会话 id')
+    manager.send({ type: 'session.resume', sessionId })
+  })
+
   ipcMain.handle('config:get', () => loadConfig())
 
   ipcMain.handle('config:set', (_event, patch: unknown) => {

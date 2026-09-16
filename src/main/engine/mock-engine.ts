@@ -21,6 +21,10 @@ export class MockEngine implements EngineProcess {
   private busy = false
   private msgSeq = 0
   private callSeq = 0
+  private sessionSeq = 1
+  private sessionId = 'mock-sess-1'
+  /** mock 历史会话池（不含当前会话；供恢复演示） */
+  private readonly historyPool = ['mock-hist-1', 'mock-hist-2', 'mock-hist-3']
   private allowedTools = new Set<string>()
   private pending: PendingPermission | null = null
 
@@ -49,7 +53,8 @@ export class MockEngine implements EngineProcess {
       engine: 'mock',
       agent: 'mock-engine',
       version: '0.1.0',
-      model: 'deepseek-v4-pro (mock)'
+      model: 'deepseek-v4-pro (mock)',
+      sessionId: this.sessionId
     })
   }
 
@@ -71,7 +76,53 @@ export class MockEngine implements EngineProcess {
       case 'user.input':
         void this.runTurn(cmd.text)
         break
+      case 'session.list':
+        this.emit({
+          type: 'session.list',
+          sessions: this.historyPool
+            .filter((id) => id !== this.sessionId)
+            .map((sessionId) => ({ sessionId, cwd: 'mock://workspace' }))
+        })
+        break
+      case 'session.new':
+        if (!this.canSwitchSession()) return
+        this.sessionId = `mock-sess-${++this.sessionSeq}`
+        this.emit({
+          type: 'session.switched',
+          sessionId: this.sessionId,
+          kind: 'new',
+          model: 'deepseek-v4-pro (mock)'
+        })
+        break
+      case 'session.resume':
+        if (!this.canSwitchSession()) return
+        if (!cmd.sessionId || cmd.sessionId === this.sessionId) return
+        this.sessionId = cmd.sessionId
+        this.emit({
+          type: 'session.switched',
+          sessionId: this.sessionId,
+          kind: 'resumed',
+          model: 'deepseek-v4-pro (mock)'
+        })
+        break
     }
+  }
+
+  /** 切换会话的前置守卫（与 DshProcess 语义一致） */
+  private canSwitchSession(): boolean {
+    if (this.busy) {
+      this.emit({ type: 'engine.error', message: '当前轮次尚未结束，无法切换会话', fatal: false })
+      return false
+    }
+    if (this.pending) {
+      this.emit({
+        type: 'engine.error',
+        message: '有待处理的审批请求，请先处理后再切换会话',
+        fatal: false
+      })
+      return false
+    }
+    return true
   }
 
   kill(): void {

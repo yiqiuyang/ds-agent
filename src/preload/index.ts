@@ -24,6 +24,15 @@ const api = {
   interrupt(): Promise<void> {
     return ipcRenderer.invoke('engine:interrupt')
   },
+  listSessions(cursor?: string): Promise<void> {
+    return ipcRenderer.invoke('engine:session-list', cursor)
+  },
+  newSession(): Promise<void> {
+    return ipcRenderer.invoke('engine:session-new')
+  },
+  resumeSession(sessionId: string): Promise<void> {
+    return ipcRenderer.invoke('engine:session-resume', sessionId)
+  },
   getConfig(): Promise<ShellConfig> {
     return ipcRenderer.invoke('config:get')
   },

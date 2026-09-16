@@ -1,4 +1,5 @@
 import { useShell, type View } from '../store'
+import { SessionMenu } from './SessionMenu'
 
 const STATUS_TEXT: Record<string, string> = {
   starting: '启动中',
@@ -43,6 +44,7 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
       {engine?.model && <span className="engine-model">{engine.model}</span>}
       <span className="spacer" />
+      <SessionMenu />
       <button className="ghost-button" onClick={() => void window.dsh.restartEngine()}>
         重启引擎
       </button>

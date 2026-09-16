@@ -24,6 +24,9 @@ const ACP_METHOD = {
   initialize: 'initialize',
   initialized: 'initialized',
   sessionNew: 'session/new',
+  sessionList: 'session/list',
+  sessionResume: 'session/resume',
+  sessionClose: 'session/close',
   sessionPrompt: 'session/prompt',
   sessionCancel: 'session/cancel',
   sessionUpdate: 'session/update',
@@ -207,6 +210,10 @@ export class DshProcess implements EngineProcess {
   private disposed = false
 
   private sessionId: string | null = null
+  /** 本连接内已激活的会话（新建/恢复过）：切换走时不关闭则无法再从 session/list 看见 */
+  private activeSessions = new Set<string>()
+  /** session/prompt 是否在途（one-prompt admission slot 期间禁止切换会话） */
+  private promptInFlight = false
   private nextRpcId = 1
   private rpcHandlers = new Map<number, (result: unknown, error: RpcError | null) => void>()
   private permissionPending: { rpcId: number; options: AcpPermissionOption[] } | null = null
@@ -306,12 +313,68 @@ export class DshProcess implements EngineProcess {
           this.emit({ type: 'engine.error', message: '引擎尚未完成 ACP 握手，无法发送输入', fatal: false })
           return
         }
+        this.promptInFlight = true
         this.sendRpc(
           ACP_METHOD.sessionPrompt,
           { sessionId: this.sessionId, prompt: [{ type: 'text', text: cmd.text }] },
           (result, error) => this.onPromptResult(result, error)
         )
         break
+      case 'session.list':
+        this.sendRpc(
+          ACP_METHOD.sessionList,
+          { cwd: this.cwd, ...(cmd.cursor ? { cursor: cmd.cursor } : {}) },
+          (result, error) => this.onSessionListResult(result, error, cmd.cursor)
+        )
+        break
+      case 'session.new':
+        if (!this.canSwitchSession()) return
+        this.sendRpc(ACP_METHOD.sessionNew, { cwd: this.cwd, mcpServers: [] }, (result, error) => {
+          const sessionId = (result as { sessionId?: unknown } | null)?.sessionId
+          if (error || typeof sessionId !== 'string' || !sessionId) {
+            this.emit({
+              type: 'engine.error',
+              message: `新建会话失败: ${error?.message ?? '无 sessionId'}`,
+              fatal: false
+            })
+            return
+          }
+          const model = extractCurrentModel((result as { configOptions?: unknown }).configOptions)
+          this.activeSessions.add(sessionId)
+          this.closeCurrentSession()
+          this.switchToSession(sessionId, 'new', model)
+        })
+        break
+      case 'session.resume': {
+        if (!this.canSwitchSession()) return
+        const target = cmd.sessionId
+        if (!target || target === this.sessionId) return
+        if (this.activeSessions.has(target)) {
+          // 本连接内已激活（先前切换走但未关闭）：直接切回，session/resume 会拒绝重复激活
+          this.switchToSession(target, 'resumed')
+          return
+        }
+        this.sendRpc(
+          ACP_METHOD.sessionResume,
+          { sessionId: target, cwd: this.cwd, mcpServers: [] },
+          (result, error) => {
+            if (error) {
+              this.emit({
+                type: 'engine.error',
+                message: `恢复会话失败: ${error.message}`,
+                fatal: false
+              })
+              return
+            }
+            const model = extractCurrentModel((result as { configOptions?: unknown }).configOptions)
+            // 恢复成功后再关闭旧会话，失败则留在当前会话
+            this.activeSessions.add(target)
+            this.closeCurrentSession()
+            this.switchToSession(target, 'resumed', model)
+          }
+        )
+        break
+      }
       case 'permission.response': {
         const pending = this.permissionPending
         if (!pending) {
@@ -441,6 +504,7 @@ export class DshProcess implements EngineProcess {
       return
     }
     this.sessionId = sessionId
+    this.activeSessions.add(sessionId)
     const model = extractCurrentModel((result as { configOptions?: unknown }).configOptions)
     console.log(
       `[dsh-acp] 握手完成: agent=${this.agentName}${this.agentVersion ? '@' + this.agentVersion : ''}` +
@@ -451,11 +515,13 @@ export class DshProcess implements EngineProcess {
       engine: 'dsh',
       agent: this.agentName,
       version: this.agentVersion,
+      sessionId,
       ...(model ? { model } : {})
     })
   }
 
   private onPromptResult(result: unknown, error: RpcError | null): void {
+    this.promptInFlight = false
     this.closeStreams()
     if (error) {
       const errId = `err_${Date.now()}`
@@ -474,6 +540,77 @@ export class DshProcess implements EngineProcess {
     const reason =
       typeof stop === 'string' && TURN_REASON_FROM_ACP[stop] ? TURN_REASON_FROM_ACP[stop] : 'done'
     this.emit({ type: 'turn.end', reason })
+  }
+
+  // ---- 会话管理（list / new / resume / close） ----
+
+  /** session/list 结果 -> session.list 事件（宽容解析条目） */
+  private onSessionListResult(result: unknown, error: RpcError | null, cursor?: string): void {
+    if (error) {
+      this.emit({
+        type: 'engine.error',
+        message: `获取会话列表失败: ${error.message}`,
+        fatal: false
+      })
+      return
+    }
+    const res = (result ?? {}) as { sessions?: unknown; nextCursor?: unknown }
+    const sessions = Array.isArray(res.sessions)
+      ? res.sessions
+          .map((it) => (it ?? {}) as { sessionId?: unknown; cwd?: unknown })
+          .filter((it) => typeof it.sessionId === 'string' && typeof it.cwd === 'string')
+          .map((it) => ({ sessionId: it.sessionId as string, cwd: it.cwd as string }))
+      : []
+    this.emit({
+      type: 'session.list',
+      sessions,
+      ...(cursor ? { cursor } : {}),
+      ...(typeof res.nextCursor === 'string' ? { nextCursor: res.nextCursor } : {})
+    })
+  }
+
+  /** 切换会话的前置守卫：prompt 在途或审批未决时拒绝（当前会话的一轮必须完整收尾） */
+  private canSwitchSession(): boolean {
+    if (this.promptInFlight) {
+      this.emit({
+        type: 'engine.error',
+        message: '当前轮次尚未结束，无法切换会话',
+        fatal: false
+      })
+      return false
+    }
+    if (this.permissionPending) {
+      this.emit({
+        type: 'engine.error',
+        message: '有待处理的审批请求，请先处理后再切换会话',
+        fatal: false
+      })
+      return false
+    }
+    return true
+  }
+
+  /** 关闭当前会话（数据已持久化，关闭后重新出现在 session/list 中可再次恢复） */
+  private closeCurrentSession(): void {
+    const old = this.sessionId
+    if (!old) return
+    this.activeSessions.delete(old)
+    this.sendRpc(ACP_METHOD.sessionClose, { sessionId: old }, (_r, e) => {
+      if (e) console.warn(`[dsh-acp] 关闭旧会话失败（不影响使用）: ${e.message}`)
+    })
+  }
+
+  /** 切换当前会话：收尾旧消息流、清理旧会话的审批辅助状态，广播 session.switched */
+  private switchToSession(sessionId: string, kind: 'new' | 'resumed', model?: string | null): void {
+    this.closeStreams()
+    this.toolCalls.clear()
+    this.sessionId = sessionId
+    this.emit({
+      type: 'session.switched',
+      sessionId,
+      kind,
+      ...(model ? { model } : {})
+    })
   }
 
   // ---- agent -> 外壳 ----

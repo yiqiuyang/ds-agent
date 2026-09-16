@@ -19,6 +19,8 @@ export interface EngineReadyEvent {
   agent: string
   version?: string
   model?: string
+  /** 当前会话 id（ACP 握手 session/new 结果；mock 为合成 id） */
+  sessionId?: string
 }
 
 export interface MessageStartEvent {
@@ -84,6 +86,29 @@ export interface EngineExitedEvent {
   signal?: string
 }
 
+/** 一条可恢复的历史会话（ACP session/list 条目；dsh 不回传标题/时间） */
+export interface SessionListItem {
+  sessionId: string
+  cwd: string
+}
+
+export interface SessionListEvent {
+  type: 'session.list'
+  sessions: SessionListItem[]
+  /** 本次请求的续页游标（渲染端据此判定追加还是替换） */
+  cursor?: string
+  /** 有更多页时给出的续页游标 */
+  nextCursor?: string
+}
+
+/** 会话切换完成（新建或恢复历史会话；ACP resume 不回放历史） */
+export interface SessionSwitchedEvent {
+  type: 'session.switched'
+  sessionId: string
+  kind: 'new' | 'resumed'
+  model?: string
+}
+
 /** 主进程 DshEngineManager 主动上报的生命周期状态变更 */
 export interface EngineStatusEvent {
   type: 'engine.status'
@@ -104,6 +129,8 @@ export type KernelEvent =
   | TurnEndEvent
   | EngineErrorEvent
   | EngineExitedEvent
+  | SessionListEvent
+  | SessionSwitchedEvent
 
 // ========== 外壳 -> 内核（命令） ==========
 
@@ -113,6 +140,12 @@ export type ShellCommand =
   | { type: 'user.input'; text: string }
   | { type: 'permission.response'; requestId: string; decision: PermissionDecision }
   | { type: 'interrupt' }
+  /** 列出当前工作区可恢复的历史会话（cursor 为续页游标） */
+  | { type: 'session.list'; cursor?: string }
+  /** 关闭当前会话并新建一个会话 */
+  | { type: 'session.new' }
+  /** 恢复历史会话为当前会话（历史在引擎侧保留，不回放） */
+  | { type: 'session.resume'; sessionId: string }
 
 // ========== 状态与配置 ==========
 
