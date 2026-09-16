@@ -32,7 +32,7 @@ DeepSeek Harness（dsh）插件化智能体的 Electron 桌面外壳：流式对
 ## 环境要求
 
 - Node.js ≥ 20（仅开发时需要；打包后用户机器无需 Node）
-- npm
+- npm（主项目依赖）+ pnpm（vendor 的 dsh 运行时）
 
 ## 快速开始
 
@@ -40,8 +40,11 @@ DeepSeek Harness（dsh）插件化智能体的 Electron 桌面外壳：流式对
 # 1. 安装依赖（.npmrc 已配置 npmmirror 与 electron 镜像）
 npm install
 
-# 2. 安装 vendor 捆绑的 dsh（首次克隆后执行一次）
-npm install --prefix vendor/dsh @deepseek-ai/dsh --registry=https://registry.npmmirror.com
+# 2. 安装 vendor 捆绑的 dsh 运行时（首次克隆后执行一次；用 pnpm——npm 会卡死 dsh 的 600+ 包依赖树）
+#    vendor/dsh     = acp 外壳运行时（dsh 0.1.5-rc.1）
+#    vendor/dsh-web = web + DirectorX 运行时（dsh 0.1.1-rc.2）
+pnpm --dir vendor/dsh install
+pnpm --dir vendor/dsh-web install
 
 # 3. 设置 DeepSeek API Key（dsh 凭据分层中进程环境优先级最高）
 #    PowerShell：$env:DEEPSEEK_API_KEY = "sk-…"

@@ -7,6 +7,7 @@ import type { ShellConfig } from '../shared/protocol'
 const DEFAULT_CONFIG: ShellConfig = {
   dshPath: '',
   profile: 'acp',
+  profileType: 'web',
   workspaceDir: '',
   forceMock: false
 }

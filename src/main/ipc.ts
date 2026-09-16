@@ -64,7 +64,7 @@ export function registerIpc(manager: DshEngineManager): void {
 
   ipcMain.handle('config:set', (_event, patch: unknown) => {
     // 边界校验：仅接受已知字段
-    const allowed: (keyof ShellConfig)[] = ['dshPath', 'profile', 'workspaceDir', 'forceMock']
+    const allowed: (keyof ShellConfig)[] = ['dshPath', 'profile', 'profileType', 'workspaceDir', 'forceMock']
     const safe: Partial<ShellConfig> = {}
     if (patch && typeof patch === 'object') {
       for (const key of allowed) {

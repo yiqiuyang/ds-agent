@@ -192,6 +192,8 @@ export interface ShellConfig {
   dshPath: string
   /** dsh profile，默认 acp */
   profile: string
+  /** 集成模式：web（WebContentsView 内嵌 DSH Web UI）/ acp（自研 React UI + ACP sidecar），默认 web */
+  profileType: 'web' | 'acp'
   /** 工作区目录；空 = 用户主目录 */
   workspaceDir: string
   /** 强制使用 mock 引擎 */

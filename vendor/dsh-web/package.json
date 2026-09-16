@@ -1,0 +1,8 @@
+{
+  "name": "dsh-runtime-web",
+  "private": true,
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.1-rc.2",
+    "dsh-directorx": "github:LaplaceYoung/dsh-directorx#369955dee8cb7ab6f1f9af6221f6b84534465fc7"
+  }
+}
