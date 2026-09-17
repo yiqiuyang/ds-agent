@@ -23,7 +23,8 @@ function resolveWebEntry(): string {
 
 /**
  * web profile 引擎：spawn `dsh --profile web --no-open --port 0`，
- * 从 stdout 解析实际端口（`dsh web: http://127.0.0.1:<port>`，无 token），
+ * 从 stdout 解析实际端口与认证 URL（`dsh web: http://127.0.0.1:<port>/?token=…`，
+ * 0.1.5-rc.1 带 token；0.1.1-rc.2 无 token），
  * 带就绪看门狗与崩溃自动重启。
  */
 export class WebEngine {
@@ -91,7 +92,8 @@ export class WebEngine {
   private onStdout(chunk: string): void {
     this.buffer += chunk
     if (this.url) return
-    const match = this.buffer.match(/dsh web:\s+(http:\/\/127\.0\.0\.1:\d+)/)
+    // dsh 0.1.5-rc.1 打印带认证 token 的 URL（`…:<port>/?token=…`），完整捕获；0.1.1-rc.2 无 token 也兼容
+    const match = this.buffer.match(/dsh web:\s+(http:\/\/127\.0\.0\.1:\d+\S*)/)
     if (match) {
       this.url = match[1]
       if (this.readyTimer) {

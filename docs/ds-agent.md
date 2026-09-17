@@ -33,7 +33,7 @@
 | **Profile**         | `web`                                                        | DirectorX 的画布是 DSH Web UI 客户端插件，headless 下不渲染 |
 | **DSH 启动方式**    | `dsh --profile web --no-open --port 0`                       | 动态端口避免冲突，`--no-open` 阻止自动打开系统浏览器        |
 | **Web UI 加载方式** | Electron `WebContentsView` 加载 `http://127.0.0.1:<port>/`   | 保留 DirectorX 完整画布体验；`BrowserView` 已弃用           |
-| **端口解析**        | 从 stdout 解析 `dsh web: http://127.0.0.1:<port>`（**无 token**，Phase 0 已实测） | 认证靠 loopback 信任，无 URL token / cookie  |
+| **端口解析**        | 从 stdout 解析 `dsh web: http://127.0.0.1:<port>/?token=<token>`（0.1.5-rc.1 已实测；0.1.1-rc.2 无 token） | 加载 token URL → 303 设签名 cookie → 重定向到 `/`；无 token 访问返回 401  |
 | **运行时**          | Electron 内嵌 Node（`ELECTRON_RUN_AS_NODE=1`），**Phase 0 验证 Node ≥ 22.19** | 复用 Electron 二进制，无需独立 Node                         |
 | **FFmpeg**          | 捆绑到 `vendor/ffmpeg/`，通过 `PATH` + `DSH_FFMPEG_PATH` 注入 | DirectorX 剪辑管线依赖本地 FFmpeg；**Phase 3 才接入**       |
 | **路径管理**        | 统一走 `DshRuntimeManager`                                   | 开发/生产双模式，禁止业务代码散落拼路径                     |
@@ -217,9 +217,9 @@ dsh --profile web --no-open --port 0
 
 Phase 0 实测（2026-09-16）：
 
-- 打印 `dsh web: http://127.0.0.1:<port>`，**无 token 参数**。
+- 打印 `dsh web: http://127.0.0.1:<port>/?token=<token>`（0.1.5-rc.1 带 token；0.1.1-rc.2 无）。
 - 无 ANSI 颜色码，单行输出。
-- 首页 `/` 直接返回 `200` + 前端 HTML，**无 Set-Cookie、无重定向**；认证靠 loopback 信任（`--trusted-host` 扩展受信 host）。
+- 认证：带 token 访问返回 `303`（设签名 cookie 后重定向到 `/`）；无 token 访问 `/` 返回 `401`。
 
 **解析代码（待实测后调整正则）**：
 
@@ -278,7 +278,7 @@ win.contentView.addChildView(view);
 view.setBounds({ x: 0, y: 0, width: 1440, height: 900 });
 view.setAutoResize({ width: true, height: true });
 
-// 直接加载 URL 即可（无 token，认证靠 loopback 信任）
+// 先加载带 token 的 URL 完成认证（0.1.5-rc.1）
 view.webContents.loadURL(engine.webUrl);
 ```
 
@@ -301,7 +301,7 @@ view.webContents.on('did-finish-load', async () => {
 
 
 
-无 token、无 cookie、无重定向：`loadURL` 后 Web UI 直接可用（loopback 信任）。上面的「认证验证探针」cookie 检查已无必要。
+认证链路：先 `loadURL` 带 token 的 URL，服务端校验后设签名 cookie 并 303 重定向到 `/`，WebContentsView 持有 cookie 正常加载。无 token 直接访问 `/` 返回 401。
 
 ### 3.3 审批弹窗的通信桥接（Phase 2 再考虑）
 
