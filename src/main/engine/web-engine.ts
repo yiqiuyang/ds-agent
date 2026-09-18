@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 
@@ -23,12 +24,30 @@ function resolveWebEntry(): string {
 
 /**
  * FFmpeg 二进制目录。DirectorX 剪辑管线只认 PATH 上的 ffmpeg/ffprobe（不读
- * DSH_FFMPEG_PATH），故把该目录注入子进程 PATH。开发用 vendor/ffmpeg，打包后 resources/ffmpeg。
+ * DSH_FFMPEG_PATH），故把该目录注入子进程 PATH。
+ * 项目路径含中文（`D:\AI大模型应用开发\...`）时，Windows 对非 ASCII 绝对路径的进程启动
+ * 不可靠（spawn 报 ENOENT / 0xC0000142），所以先把二进制复制到纯 ASCII 的 userData 目录，
+ * 再注入该目录。
  */
-function resolveFfmpegDir(): string {
-  return app.isPackaged
+function ensureFfmpegDir(): string {
+  const srcDir = app.isPackaged
     ? path.join(process.resourcesPath, 'ffmpeg')
     : path.join(app.getAppPath(), 'vendor', 'ffmpeg')
+  const destDir = path.join(app.getPath('userData'), 'ffmpeg')
+  const names = process.platform === 'win32' ? ['ffmpeg.exe', 'ffprobe.exe'] : ['ffmpeg', 'ffprobe']
+  mkdirSync(destDir, { recursive: true })
+  for (const name of names) {
+    const src = path.join(srcDir, name)
+    const dest = path.join(destDir, name)
+    if (!existsSync(dest) && existsSync(src)) {
+      try {
+        cpSync(src, dest)
+      } catch {
+        return srcDir // 复制失败则回退到源目录（按名字 spawn 仍可用）
+      }
+    }
+  }
+  return destDir
 }
 
 /**
@@ -68,7 +87,7 @@ export class WebEngine {
           env: {
             ...process.env,
             ELECTRON_RUN_AS_NODE: '1',
-            PATH: `${resolveFfmpegDir()}${path.delimiter}${process.env.PATH ?? ''}`,
+            PATH: `${ensureFfmpegDir()}${path.delimiter}${process.env.PATH ?? ''}`,
           },
           stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true
