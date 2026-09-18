@@ -22,6 +22,16 @@ function resolveWebEntry(): string {
 }
 
 /**
+ * FFmpeg 二进制目录。DirectorX 剪辑管线只认 PATH 上的 ffmpeg/ffprobe（不读
+ * DSH_FFMPEG_PATH），故把该目录注入子进程 PATH。开发用 vendor/ffmpeg，打包后 resources/ffmpeg。
+ */
+function resolveFfmpegDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'ffmpeg')
+    : path.join(app.getAppPath(), 'vendor', 'ffmpeg')
+}
+
+/**
  * web profile 引擎：spawn `dsh --profile web --no-open --port 0`，
  * 从 stdout 解析实际端口与认证 URL（`dsh web: http://127.0.0.1:<port>/?token=…`，
  * 0.1.5-rc.1 带 token；0.1.1-rc.2 无 token），
@@ -55,7 +65,11 @@ export class WebEngine {
         process.execPath,
         ['--expose-internals', entry, '--profile', 'web', '--no-open', '--port', '0'],
         {
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+          env: {
+            ...process.env,
+            ELECTRON_RUN_AS_NODE: '1',
+            PATH: `${resolveFfmpegDir()}${path.delimiter}${process.env.PATH ?? ''}`,
+          },
           stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true
         }
