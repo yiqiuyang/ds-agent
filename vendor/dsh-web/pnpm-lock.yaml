@@ -12,8 +12,8 @@ importers:
         specifier: 0.1.5-rc.1
         version: 0.1.5-rc.1(0351730208d964c7e3b3400f4e092bdd)
       dsh-directorx:
-        specifier: github:yiqiuyang/dsh-directorx#v0.2.0-ds-agent.2
-        version: https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/6a535dc4a79b39dbd68e21c504aa45fe9cd834e3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-skill@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-system-prompt@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-tools@0.1.5-rc.2(7f9e302786cf21e030eafe960666842c))(@deepseek-ai/schemastery@3.18.2)(immer@10.2.0)(react-dom@19.3.0(react@18.3.1))(react@18.3.1)
+        specifier: github:yiqiuyang/dsh-directorx#v0.2.0-ds-agent.3
+        version: https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/dd9c62eaac020417f8f2097bf0ff822899569cf9(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-skill@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-system-prompt@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-tools@0.1.5-rc.2(7f9e302786cf21e030eafe960666842c))(@deepseek-ai/schemastery@3.18.2)(immer@10.2.0)(react-dom@19.3.0(react@18.3.1))(react@18.3.1)
 
 packages:
 
@@ -3067,8 +3067,8 @@ packages:
     resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
     engines: {node: '>=0.3.1'}
 
-  dsh-directorx@https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/6a535dc4a79b39dbd68e21c504aa45fe9cd834e3:
-    resolution: {gitHosted: true, integrity: sha512-lMxAV+vJSZIxmTf64bDXBKp08IXHTmQCiaf7yuW4UQmGyCjV4/Sq8Mx/3nFdFI5QbOJY2MTMhfQQ43Jdla6quA==, tarball: https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/6a535dc4a79b39dbd68e21c504aa45fe9cd834e3}
+  dsh-directorx@https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/dd9c62eaac020417f8f2097bf0ff822899569cf9:
+    resolution: {gitHosted: true, integrity: sha512-s609Jt2u+hkIRUQUZgz84UMiqDaohk8MABS5CPwiNKwKwygprUGkJd+pHdhIltNGxld2ZnYRAVvPGM/+u0JMOQ==, tarball: https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/dd9c62eaac020417f8f2097bf0ff822899569cf9}
     version: 0.2.0
     engines: {node: '>=22.19.0'}
     peerDependencies:
@@ -7306,7 +7306,7 @@ snapshots:
 
   diff@9.0.0: {}
 
-  dsh-directorx@https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/6a535dc4a79b39dbd68e21c504aa45fe9cd834e3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-skill@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-system-prompt@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-tools@0.1.5-rc.2(7f9e302786cf21e030eafe960666842c))(@deepseek-ai/schemastery@3.18.2)(immer@10.2.0)(react-dom@19.3.0(react@18.3.1))(react@18.3.1):
+  dsh-directorx@https://codeload.github.com/yiqiuyang/dsh-directorx/tar.gz/dd9c62eaac020417f8f2097bf0ff822899569cf9(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-skill@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-system-prompt@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-tools@0.1.5-rc.2(7f9e302786cf21e030eafe960666842c))(@deepseek-ai/schemastery@3.18.2)(immer@10.2.0)(react-dom@19.3.0(react@18.3.1))(react@18.3.1):
     dependencies:
       '@webav/av-cliper': 1.2.8
       '@xyflow/react': 12.11.6(immer@10.2.0)(react-dom@19.3.0(react@18.3.1))(react@18.3.1)
