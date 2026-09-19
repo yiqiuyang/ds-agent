@@ -1,5 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { app } from 'electron'
 
@@ -60,23 +59,6 @@ export class WebEngine {
     this.buffer = ''
     this.url = null
     const entry = resolveWebEntry()
-    // 诊断：把 ffmpeg 目录、主进程 PATH、注入后 PATH、以及外壳侧 ffprobe 探测结果写到日志
-    try {
-      const diagEnv = {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
-        PATH: `${resolveFfmpegDir()}${path.delimiter}${process.env.PATH ?? ''}`,
-      }
-      const probe = spawnSync('ffprobe', ['-version'], { encoding: 'utf8', env: diagEnv })
-      writeFileSync(path.join(app.getAppPath(), 'ffmpeg-diag.log'), [
-        `dir = ${resolveFfmpegDir()}`,
-        `main PATH = ${process.env.PATH ?? '(undefined)'}`,
-        `injected PATH = ${diagEnv.PATH}`,
-        `probe status = ${probe.status} err = ${probe.error ? (probe.error as NodeJS.ErrnoException).code ?? '' : ''} out = ${(probe.stdout || probe.stderr || '').split('\n')[0]}`,
-      ].join('\n'), 'utf8')
-    } catch {
-      // 诊断失败不影响启动
-    }
     let child: ChildProcess
     try {
       child = spawn(
