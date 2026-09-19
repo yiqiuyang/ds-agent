@@ -4,7 +4,7 @@ import { DshEngineManager } from './engine/engine-manager'
 import { WebEngine } from './engine/web-engine'
 import { createWebWindow } from './web-window'
 import { registerIpc } from './ipc'
-import { loadConfig } from './config'
+import { loadConfig, resolveWorkspaceDir } from './config'
 
 const cfg = loadConfig()
 
@@ -19,7 +19,7 @@ if (cfg.profileType === 'web') {
  * 无自研 React UI 与 ACP 协议层，DSH 的浏览器前端就是界面。
  */
 function startWeb(): void {
-  const engine = new WebEngine()
+  const engine = new WebEngine(resolveWorkspaceDir(cfg))
   let view: WebContentsView | null = null
 
   engine.onReady = (url) => {

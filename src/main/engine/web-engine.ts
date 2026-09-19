@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 
@@ -49,6 +50,8 @@ export class WebEngine {
   onReady: ((url: string) => void) | null = null
   onError: ((message: string) => void) | null = null
 
+  constructor(private workspaceDir: string) {}
+
   start(): void {
     this.stopping = false
     this.restartCount = 0
@@ -59,12 +62,14 @@ export class WebEngine {
     this.buffer = ''
     this.url = null
     const entry = resolveWebEntry()
+    mkdirSync(this.workspaceDir, { recursive: true })
     let child: ChildProcess
     try {
       child = spawn(
         process.execPath,
         ['--expose-internals', entry, '--profile', 'web', '--no-open', '--port', '0'],
         {
+          cwd: this.workspaceDir,
           env: {
             ...process.env,
             ELECTRON_RUN_AS_NODE: '1',
