@@ -72,7 +72,7 @@ export class WebEngine {
         `dir = ${resolveFfmpegDir()}`,
         `main PATH = ${process.env.PATH ?? '(undefined)'}`,
         `injected PATH = ${diagEnv.PATH}`,
-        `probe status = ${probe.status} err = ${probe.error?.code ?? ''} out = ${(probe.stdout || probe.stderr || '').split('\n')[0]}`,
+        `probe status = ${probe.status} err = ${probe.error ? (probe.error as NodeJS.ErrnoException).code ?? '' : ''} out = ${(probe.stdout || probe.stderr || '').split('\n')[0]}`,
       ].join('\n'), 'utf8')
     } catch {
       // 诊断失败不影响启动
