@@ -1,6 +1,5 @@
 import { app } from 'electron'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import type { ShellConfig } from '../shared/protocol'
 
@@ -33,5 +32,7 @@ export function saveConfig(patch: Partial<ShellConfig>): ShellConfig {
 }
 
 export function resolveWorkspaceDir(cfg: ShellConfig): string {
-  return cfg.workspaceDir || os.homedir()
+  // 默认工作区放每用户数据目录（Win: AppData\Roaming\<app>\workspace；mac: ~/Library/Application Support/<app>/workspace；
+  // Linux: ~/.config/<app>/workspace），不落开发机项目路径、不写死，用户可在 config.workspaceDir 覆盖。
+  return cfg.workspaceDir || path.join(app.getPath('userData'), 'workspace')
 }

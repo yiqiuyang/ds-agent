@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 
@@ -22,8 +23,19 @@ function resolveWebEntry(): string {
 }
 
 /**
+ * FFmpeg 二进制目录。DirectorX 剪辑管线只认 PATH 上的 ffmpeg/ffprobe（不读
+ * DSH_FFMPEG_PATH），故把该目录注入子进程 PATH。开发用 vendor/ffmpeg，打包后 resources/ffmpeg。
+ */
+function resolveFfmpegDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'ffmpeg')
+    : path.join(app.getAppPath(), 'vendor', 'ffmpeg')
+}
+
+/**
  * web profile 引擎：spawn `dsh --profile web --no-open --port 0`，
- * 从 stdout 解析实际端口（`dsh web: http://127.0.0.1:<port>`，无 token），
+ * 从 stdout 解析实际端口与认证 URL（`dsh web: http://127.0.0.1:<port>/?token=…`，
+ * 0.1.5-rc.1 带 token；0.1.1-rc.2 无 token），
  * 带就绪看门狗与崩溃自动重启。
  */
 export class WebEngine {
@@ -38,6 +50,8 @@ export class WebEngine {
   onReady: ((url: string) => void) | null = null
   onError: ((message: string) => void) | null = null
 
+  constructor(private workspaceDir: string) {}
+
   start(): void {
     this.stopping = false
     this.restartCount = 0
@@ -48,13 +62,19 @@ export class WebEngine {
     this.buffer = ''
     this.url = null
     const entry = resolveWebEntry()
+    mkdirSync(this.workspaceDir, { recursive: true })
     let child: ChildProcess
     try {
       child = spawn(
         process.execPath,
         ['--expose-internals', entry, '--profile', 'web', '--no-open', '--port', '0'],
         {
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+          cwd: this.workspaceDir,
+          env: {
+            ...process.env,
+            ELECTRON_RUN_AS_NODE: '1',
+            PATH: `${resolveFfmpegDir()}${path.delimiter}${process.env.PATH ?? ''}`,
+          },
           stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true
         }
@@ -91,7 +111,8 @@ export class WebEngine {
   private onStdout(chunk: string): void {
     this.buffer += chunk
     if (this.url) return
-    const match = this.buffer.match(/dsh web:\s+(http:\/\/127\.0\.0\.1:\d+)/)
+    // dsh 0.1.5-rc.1 打印带认证 token 的 URL（`…:<port>/?token=…`），完整捕获；0.1.1-rc.2 无 token 也兼容
+    const match = this.buffer.match(/dsh web:\s+(http:\/\/127\.0\.0\.1:\d+\S*)/)
     if (match) {
       this.url = match[1]
       if (this.readyTimer) {
