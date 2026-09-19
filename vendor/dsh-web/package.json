@@ -3,6 +3,6 @@
   "private": true,
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.5-rc.1",
-    "dsh-directorx": "github:yiqiuyang/dsh-directorx#v0.2.0-ds-agent.3"
+    "dsh-directorx": "github:yiqiuyang/dsh-directorx#v0.2.0-ds-agent.4"
   }
 }
